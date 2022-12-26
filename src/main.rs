@@ -4,12 +4,10 @@ use serde::{Deserialize, Serialize};
 
 // X, Y, Z with X being left/right, Y being forward/backward, Z being up/down
 #[derive(Resource)]
-struct Target(Vec3);
-
-impl Default for Target {
-    fn default() -> Self {
-        Self(Vec3::ZERO)
-    }
+struct Target {
+    position: Vec3,
+    max: Vec3,
+    speed: f32,
 }
 
 #[derive(Component, Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -24,6 +22,9 @@ struct MovingHead {
 #[serde(rename_all = "camelCase")]
 struct Config {
     moving_heads: Vec<MovingHead>,
+    room: Vec3,
+    home: Vec3,
+    speed: f32,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
@@ -49,18 +50,21 @@ impl MovingHead {
 
     fn send_midi(&self) {
         // TODO: Send MIDI messages
-        println!(
-            "Pan: {} ({}), Tilt: {} ({})",
-            self.pan.value, self.pan.channel, self.tilt.value, self.tilt.channel
-        );
     }
 }
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
+        .add_plugins(DefaultPlugins.set(WindowPlugin {
+            window: WindowDescriptor {
+                title: "Moving Heads 2 Point".to_string(),
+                width: 800.0,
+                height: 600.0,
+                ..Default::default()
+            },
+            ..default()
+        }))
         .add_plugin(EguiPlugin)
-        .init_resource::<Target>()
         .add_startup_system(setup)
         .add_system(ui_example)
         .add_system(gamepad_connections)
@@ -69,10 +73,20 @@ fn main() {
         .run();
 }
 
-fn ui_example(mut egui_context: ResMut<EguiContext>) {
-    egui::Window::new("Hello").show(egui_context.ctx_mut(), |ui| {
-        ui.label("world");
-        ui.button("Click me");
+fn ui_example(
+    mut egui_context: ResMut<EguiContext>,
+    target: Res<Target>,
+    moving_heads: Query<&MovingHead>,
+) {
+    egui::Window::new("Target").show(egui_context.ctx_mut(), |ui| {
+        ui.label(target.position.to_string());
+    });
+    egui::Window::new("Moving Heads").show(egui_context.ctx_mut(), |ui| {
+        for moving_head in moving_heads.iter() {
+            ui.label(moving_head.position.to_string());
+            ui.label(moving_head.pan.value.to_string());
+            ui.label(moving_head.tilt.value.to_string());
+        }
     });
 }
 
@@ -86,6 +100,11 @@ fn setup(mut commands: Commands) {
             for movinghead in config.moving_heads {
                 commands.spawn(movinghead);
             }
+            commands.insert_resource(Target {
+                position: config.home,
+                max: config.room,
+                speed: config.speed,
+            });
         }
         Err(error) => {
             println!("Error: {}", error);
@@ -95,7 +114,7 @@ fn setup(mut commands: Commands) {
 
 fn update_movingheads(mut movingheads: Query<&mut MovingHead>, target: Res<Target>) {
     for mut movinghead in movingheads.iter_mut() {
-        movinghead.point_to(target.0);
+        movinghead.point_to(target.position);
         movinghead.send_midi();
     }
 }
@@ -169,9 +188,12 @@ fn gamepad_input(
     };
 
     if let (Some(x), Some(y), Some(z)) = (axes.get(axis_rx), axes.get(axis_ry), axes.get(axis_ly)) {
-        let delta = Vec3::new(x, y, z);
+        let delta = Vec3::new(x, y, z) / 100.0 * target.speed;
 
-        // Update the target position
-        target.0 += delta;
+        // Update the target position but keep it within the room
+        target.position += delta;
+        target.position.x = target.position.x.clamp(0.0, target.max.x);
+        target.position.y = target.position.y.clamp(0.0, target.max.y);
+        target.position.z = target.position.z.clamp(0.0, target.max.z);
     }
 }
