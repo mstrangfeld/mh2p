@@ -1,0 +1,19 @@
+movingHeads:
+  - position: [0,0,0]
+    pan:
+      value: 0
+      channel: 0
+      maxValue: 320
+    tilt:
+      value: 0
+      channel: 1
+      maxValue: 520
+  - position: [10,20,0]
+    pan:
+      value: 0
+      channel: 4
+      maxValue: 320
+    tilt:
+      value: 0
+      channel: 5
+      maxValue: 520
